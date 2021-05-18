@@ -11,7 +11,7 @@ import org.springframework.context.support.ClassPathXmlApplicationContext;
 public class Entrance {
 	public static void main(String[] args) {
 		System.out.println("hello");
-		String xmlPath = "spring/spring-config.xml";
+		String xmlPath = "spring-config.xml";
 		ApplicationContext applicationContext = new ClassPathXmlApplicationContext(xmlPath);
 		WelcomeService welcomeService = (WelcomeService) applicationContext.getBean("welcomeService");
 		welcomeService.sayHello("我是维坤坤");

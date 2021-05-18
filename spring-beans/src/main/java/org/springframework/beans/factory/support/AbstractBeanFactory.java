@@ -203,6 +203,12 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	// Implementation of BeanFactory interface
 	//---------------------------------------------------------------------
 
+	/**
+	 * getBean属于一种空壳方法，所有的具体实现均放在doGetBean中
+	 * @param name the name of the bean to retrieve
+	 * @return
+	 * @throws BeansException
+	 */
 	@Override
 	public Object getBean(String name) throws BeansException {
 		return doGetBean(name, null, null, false);
@@ -249,11 +255,31 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
 			throws BeansException {
 
+		/**
+		 * 名字的转换，
+		 * 1. name可能会以&开头，表明调用者想获取FactoryBean本身,而非FactoryBean类所创建的bean
+		 * 在 BeanFactory 中，FactoryBean 的实现类和其他的 bean 存储方式是一致的，
+		 * 即 <beanName, bean>，beanName 中是没有 & 这个字符的。
+		 * 所以我们需要将 name 的首字符 & 移除，这样才能从缓存里取到 FactoryBean 实例。
+		 * 2. 若 name 是一个别名，则应将别名转换为具体的实例名，也就是 beanName。
+		 */
 		String beanName = transformedBeanName(name);
 		Object beanInstance;
 
 		// Eagerly check singleton cache for manually registered singletons.
+		// 从缓存中获取单例 bean。Spring 是使用 Map 作为 beanName 和 bean 实例的缓存的，
+		// 所以这里可以简单的理解为从map中获取元素，当然实际更加复杂
 		Object sharedInstance = getSingleton(beanName);
+
+		/**
+		 * 如果单例缓存中不存在，表明该实例还没有被创建
+		 * BeanFactory 并不会在一开始就将所有的单例 bean 实例化好，
+		 * 而是在调用 getBean 获取 bean 时再实例化，也就是懒加载。
+		 * getBean 方法有很多重载，比如 getBean(String name, Object... args)，我们在首次获取
+		 * 某个 bean 时，可以传入用于初始化 bean 的参数数组（args），BeanFactory 会根据这些参数
+		 * 去匹配合适的构造方法构造 bean 实例。当然，如果单例 bean 早已创建好，这里的 args 就没有
+		 * 用了，BeanFactory 不会多次实例化单例 bean。
+		 */
 		if (sharedInstance != null && args == null) {
 			if (logger.isTraceEnabled()) {
 				if (isSingletonCurrentlyInCreation(beanName)) {
@@ -264,6 +290,12 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					logger.trace("Returning cached instance of singleton bean '" + beanName + "'");
 				}
 			}
+			/**
+			 * 如果 sharedInstance 是普通的单例 bean，下面的方法会直接返回。但如果
+			 * sharedInstance 是 FactoryBean 类型的，则需调用 getObject 工厂方法获取真正的
+			 * bean 实例。如果用户想获取 FactoryBean 本身，这里也不会做特别的处理，直接返回
+			 * 即可。毕竟 FactoryBean 的实现类本身也是一种 bean，只不过具有一点特殊的功能而已。
+			 */
 			beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, null);
 		}
 
@@ -306,6 +338,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 				if (requiredType != null) {
 					beanCreation.tag("beanType", requiredType::toString);
 				}
+				// 合并父 BeanDefinition 与子 BeanDefinition
 				RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
 				checkMergedBeanDefinition(mbd, beanName, args);
 
@@ -328,6 +361,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					}
 				}
 
+				// 创建bean的实例
 				// Create bean instance.
 				if (mbd.isSingleton()) {
 					sharedInstance = getSingleton(beanName, () -> {
@@ -344,7 +378,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					});
 					beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
 				}
-
+				// 创建 prototype 类型的 bean 实例
 				else if (mbd.isPrototype()) {
 					// It's a prototype -> create a new instance.
 					Object prototypeInstance = null;
@@ -357,7 +391,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					}
 					beanInstance = getObjectForBeanInstance(prototypeInstance, name, beanName, mbd);
 				}
-
+				// 创建其他类型的 bean 实例
 				else {
 					String scopeName = mbd.getScope();
 					if (!StringUtils.hasLength(scopeName)) {
@@ -395,6 +429,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			}
 		}
 
+		// 返回bean
 		return adaptBeanInstance(name, beanInstance, requiredType);
 	}
 
